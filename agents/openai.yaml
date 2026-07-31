@@ -1,0 +1,4 @@
+interface:
+  display_name: "Evidence Research"
+  short_description: "Auditable deep research with claim-level evidence"
+  brand_color: "#C65D21"

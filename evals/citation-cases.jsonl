@@ -1,0 +1,3 @@
+{"claim": "The trial reduced median inspection time by 20%.", "evidence": "The controlled trial reported a 20 percent reduction in median inspection time.", "label": "support"}
+{"claim": "The trial eliminated all inspection time.", "evidence": "The controlled trial reported a 20 percent reduction in median inspection time.", "label": "unsupported"}
+{"claim": "The technology increased inspection time.", "evidence": "The controlled trial reported a 20 percent reduction in median inspection time.", "label": "contradiction"}

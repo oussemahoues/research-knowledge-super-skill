@@ -1,0 +1,11 @@
+Evidence Research 2.0
+
+Architecture credit:
+- codejunkie99/graph-engineering (MIT), especially its ontology-first knowledge-graph pipeline and task-graph distinction.
+- Southeast University Knowledge Graph course is acknowledged by that project as its academic source; no course files are redistributed here.
+
+Independent implementation:
+- All runtime code, schemas, tests, and skill instructions in this plugin are independently authored for this project.
+- graph-engineering is not a runtime dependency.
+
+Research references and dates are recorded in references/research-basis.md.
