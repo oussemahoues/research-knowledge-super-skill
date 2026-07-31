@@ -23,6 +23,13 @@ jobs:
       - name: Verify sealed plugin
         run: python -B verify.py
       - name: Exercise demo run
+        shell: bash
         run: |
-          python -B scripts/researchctl.py demo /tmp/evidence-research-demo
-          python -B scripts/researchctl.py audit /tmp/evidence-research-demo
+          set -euo pipefail
+          demo_root="/tmp/evidence-research-demo"
+          rm -rf "$demo_root"
+          python -B scripts/researchctl.py demo "$demo_root"
+          run_dir="$(find "$demo_root" -mindepth 1 -maxdepth 1 -type d -name 'run_*' -print -quit)"
+          test -n "$run_dir"
+          test -f "$run_dir/run.json"
+          python -B scripts/researchctl.py audit "$run_dir"
