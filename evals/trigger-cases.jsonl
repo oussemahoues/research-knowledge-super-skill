@@ -1,0 +1,5 @@
+{"input": "Conduct a deep technical investigation of current hydrogen inspection methods and produce a cited report.", "expected_skill": "running-evidence-research", "should_trigger": true}
+{"input": "Resume run:hydrogen-inspection:abc123def456", "expected_skill": "running-evidence-research", "should_trigger": true}
+{"input": "Audit this completed research run for unsupported citations.", "expected_skill": "auditing-research-run", "should_trigger": true}
+{"input": "What is the capital of France?", "expected_skill": null, "should_trigger": false}
+{"input": "Rewrite this paragraph professionally.", "expected_skill": null, "should_trigger": false}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Graph JSONL Record",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["record_type", "id", "node_type", "created_at", "data"],
+      "properties": {
+        "record_type": {"const": "node"},
+        "id": {"type": "string"},
+        "node_type": {"enum": ["ResearchQuestion", "Hypothesis", "Claim", "EvidenceSpan", "Source", "Entity", "Event", "Method", "Dataset", "Finding", "ResearchGap"]},
+        "status": {"enum": ["candidate", "verified", "contested", "rejected", "superseded", "unknown"]},
+        "created_at": {"type": "string", "format": "date-time"},
+        "data": {"type": "object"}
+      }
+    },
+    {
+      "type": "object",
+      "required": ["record_type", "id", "edge_type", "from_id", "to_id", "created_at", "provenance"],
+      "properties": {
+        "record_type": {"const": "edge"},
+        "id": {"type": "string"},
+        "edge_type": {"enum": ["ASSERTED_BY", "SUPPORTS", "CONTRADICTS", "QUALIFIES", "DERIVED_FROM", "ABOUT", "SAME_AS", "SUPERSEDES", "ANSWERS", "CITES"]},
+        "from_id": {"type": "string"},
+        "to_id": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "provenance": {"type": "object"}
+      }
+    }
+  ]
+}

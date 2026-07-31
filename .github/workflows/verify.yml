@@ -1,0 +1,28 @@
+name: Verify plugin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify sealed plugin
+        run: python -B verify.py
+      - name: Exercise demo run
+        run: |
+          python -B scripts/researchctl.py demo /tmp/evidence-research-demo
+          python -B scripts/researchctl.py audit /tmp/evidence-research-demo

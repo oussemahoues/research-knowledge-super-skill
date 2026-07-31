@@ -1,0 +1,9 @@
+{
+  "name": "evidence-research",
+  "version": "2.0.0",
+  "description": "Evidence-first deep research with resumable task graphs, claim-evidence memory, citation verification, and deterministic quality gates.",
+  "author": {
+    "name": "Oussema HOUES"
+  },
+  "license": "MIT"
+}

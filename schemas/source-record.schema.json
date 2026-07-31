@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source Record",
+  "type": "object",
+  "required": ["id", "title", "locator", "publisher", "accessed_at", "authority_tier", "source_type", "content_hash", "independence_group", "injection_risk"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^source:"},
+    "authority_tier": {"enum": ["A", "B", "C", "D"]},
+    "injection_risk": {"enum": ["none", "low", "medium", "high"]}
+  }
+}
