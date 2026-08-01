@@ -1,6 +1,6 @@
 ---
 name: auditing-research-run
-description: This skill should be used before declaring research complete, when reviewing a run produced by another agent, when checking citations and evidence coverage, or when diagnosing why a run is blocked. It performs deterministic validation of state history, task topology, canonical artifacts, graph integrity, claim-evidence coverage, citation resolvability, report sections, contradiction exposure, and immutability. Do not acquire evidence, repair conclusions silently, or rewrite the report.
+description: This skill should be used when research is about to be declared complete, when reviewing a run produced by another agent, when checking citations and evidence coverage, or when diagnosing why a run is blocked. It performs deterministic validation of state history, task topology, canonical artifacts, graph integrity, claim-evidence coverage, citation resolvability, report sections, contradiction exposure, and immutability. Do not acquire evidence, repair conclusions silently, or rewrite the report.
 ---
 
 # Audit the Research Run
@@ -108,7 +108,7 @@ The runtime result is authoritative for deterministic checks. Add human-readable
 
 ## Failure recovery
 
-- **Artifact missing:** fail the corresponding gate; do not create a placeholder.
+- **Artifact missing:** fail the corresponding gate; do not create an empty substitute.
 - **Malformed JSONL line:** report file and line number when available; stop dependent checks but continue independent checks.
 - **Threshold override requested:** apply only when explicitly authorized and record original and override values.
 - **Runtime tool unavailable:** run equivalent deterministic library checks when possible and record the instrument limitation.
