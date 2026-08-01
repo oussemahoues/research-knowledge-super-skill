@@ -18,6 +18,7 @@ from src.evidence_research.migration import migrate_v2_run
 from src.evidence_research.retrieval import HybridRetriever
 from src.evidence_research.runtime import DurableExecutor, EventStore
 from src.evidence_research.runtime.event_store import stable_key
+from src.evidence_research.synthesis import audit_rendered_report, render_report
 from src.evidence_research.taskgraph import WorkProfile, compile_task_graph, select_architecture
 from src.evidence_research.verification import EvidenceChainVerifier
 
@@ -124,6 +125,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.status in {'verified', 'contested'} else 1
 
 
+def cmd_render(args: argparse.Namespace) -> int:
+    run_dir, store, run_id = _load_run(args.run)
+    output = Path(args.output) if args.output else run_dir / 'report.md'
+    rendered = render_report(store, run_id, output, title=args.title, as_of=args.as_of)
+    audit = audit_rendered_report(store, run_id, output)
+    print(json.dumps({'render': rendered.to_dict(), 'audit': audit}, indent=2))
+    return 0 if audit['passed'] else 1
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
     run_dir, store, run_id = _load_run(args.run)
     result = audit_run(store, run_id)
@@ -157,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     x = sub.add_parser('approve'); x.add_argument('run'); x.add_argument('interrupt_id'); x.add_argument('decision', choices=['APPROVE', 'REJECT']); x.add_argument('--reviewer', required=True); x.add_argument('--rationale', required=True); x.set_defaults(func=cmd_approve)
     x = sub.add_parser('query'); x.add_argument('run'); x.add_argument('query'); x.add_argument('--entity', action='append', default=[]); x.add_argument('--as-of'); x.add_argument('--limit', type=int, default=12); x.add_argument('--max-hops', type=int, default=3); x.set_defaults(func=cmd_query)
     x = sub.add_parser('verify-claim'); x.add_argument('run'); x.add_argument('claim_id'); x.add_argument('--as-of'); x.add_argument('--independent-sources', type=int, default=1); x.set_defaults(func=cmd_verify)
+    x = sub.add_parser('render'); x.add_argument('run'); x.add_argument('--output'); x.add_argument('--title'); x.add_argument('--as-of'); x.set_defaults(func=cmd_render)
     x = sub.add_parser('audit'); x.add_argument('run'); x.set_defaults(func=cmd_audit)
     x = sub.add_parser('migrate-v2'); x.add_argument('v2_run'); x.add_argument('destination'); x.set_defaults(func=cmd_migrate)
     x = sub.add_parser('engine'); x.set_defaults(func=cmd_engine)
