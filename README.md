@@ -1,87 +1,89 @@
-# Evidence Research 2.0
+# Evidence Research v3
 
-Evidence Research is a research-agent plugin built around one invariant:
+Evidence Research v3 is a durable research-agent plugin built around one invariant:
 
-> **The task graph executes the research; the evidence graph remembers and verifies it.**
+> **The task graph executes the work; the temporal evidence graph preserves, challenges, and verifies it.**
 
-It replaces monolithic “research super-prompts” with a resumable, auditable pipeline. Research plans are explicit DAGs. Sources are treated as untrusted data. Claims are stored separately from evidence. Contradictions are retained rather than smoothed away. Final prose is rendered only after claim and citation gates pass.
+It replaces monolithic research prompts and JSONL-as-state workflows with a resumable SQLite event store, artifact-backed task graphs, immutable source episodes, bitemporal evidence, reversible entity fusion, independent claim adjudication, and deterministic release gates.
 
-## What it provides
+## Core capabilities
 
-- One user entrypoint: `/research <brief>`
-- Two operational commands: `/research-resume <run-id>` and `/research-audit <run-id>`
-- Nine focused skills with narrow trigger boundaries
-- Five bounded agents with structured handoffs and one-writer ownership
-- A canonical JSONL claim-evidence graph with stable IDs and provenance
-- Resumable run state with legal state transitions and immutable completion
-- Task-graph validation: cycle detection, fake-edge detection, parallel-level derivation
-- Prompt-injection scanning and explicit untrusted-content boundaries
-- Citation and report audits with measurable completion gates
-- Offline verification and unit tests using only Python's standard library
+- Adaptive `single`, `diamond`, `hierarchical`, `retrieval-only`, and `audit-only` execution
+- Durable attempts, leases, checkpoints, interrupts, approvals, bounded retries, and idempotent replay
+- Task-DAG validation for real artifact dependencies, writer ownership, fan-in, and verifier separation
+- Immutable content-addressed source episodes with version supersession and integrity checks
+- Prompt-injection quarantine across normalized, fragmented, multilingual, and encoded views
+- Sensitive-data classification and redaction for persisted excerpts and reports
+- Versioned ontology registry and bitemporal graph reconstruction
+- Conservative reversible entity fusion
+- Query-adaptive lexical, neighborhood, path, temporal, causal, community, and evidence-gap retrieval
+- Independent evidence-chain adjudication
+- Deterministic report rendering with claim, edge, and source-episode markers
+- Fixed 100-case benchmark, v2 regression comparison, fault tests, and complete release sealing
 
-## Quick start
+## Canonical state
 
-```text
-/research Compare the current evidence for two industrial inspection technologies. Prioritize primary sources, state the cutoff date, preserve disagreements, and produce an executive report with claim-level citations.
+SQLite is canonical for runs, events, tasks, attempts, dependencies, artifacts, checkpoints, interrupts, approvals, source episodes, ontology versions, graph nodes and edges, fusion decisions, retrieval traces, and adjudications.
+
+`contract.json`, `task-graph.json`, `run.json`, reports, audits, and JSONL exports are readable artifacts or interchange formats. They are not authoritative transaction state.
+
+## Commands
+
+```bash
+python -B scripts/researchctl.py engine
+python -B scripts/researchctl.py init --contract contract.json --root research-runs
+python -B scripts/researchctl.py inspect <run>
+python -B scripts/researchctl.py ready <run>
+python -B scripts/researchctl.py recover-leases <run>
+python -B scripts/researchctl.py query <run> "<question>" --as-of <timestamp>
+python -B scripts/researchctl.py verify-claim <run> <claim-id>
+python -B scripts/researchctl.py render <run>
+python -B scripts/researchctl.py audit <run>
+python -B scripts/researchctl.py migrate-v2 <legacy-run> <destination>
 ```
 
-The orchestrator creates:
+Set `EVIDENCE_RESEARCH_ENGINE=v2` only for emergency fallback or migration validation.
+
+## Run layout
 
 ```text
 research-runs/<run-id>/
-├── run.json
+├── state.db
+├── source-episodes/
+├── contract.json
 ├── task-graph.json
-├── sources.jsonl
-├── evidence-graph.jsonl
-├── decisions.jsonl
+├── run.json
 ├── report.md
 └── audit.json
 ```
 
-## Lifecycle
-
-```text
-SCOPED → PLANNED → ACQUIRING → EXTRACTING → RESOLVING
-       → VERIFYING → SYNTHESIZING → AUDITING → COMPLETE
-```
-
-Any active state may move to `BLOCKED`; a blocked run may resume only to the state recorded in `resume_state`. `COMPLETE` is immutable. Corrections create a superseding run instead of rewriting history.
-
-## Evidence model
-
-The graph stores typed nodes such as `ResearchQuestion`, `Claim`, `EvidenceSpan`, `Source`, `Entity`, `Event`, `Method`, `Dataset`, `Finding`, and `ResearchGap`. Typed edges include `SUPPORTS`, `CONTRADICTS`, `QUALIFIES`, `ASSERTED_BY`, `DERIVED_FROM`, `ABOUT`, `SAME_AS`, `SUPERSEDES`, and `ANSWERS`.
-
-Every evidentiary edge carries source identity, a locator, extraction time, and confidence rationale. A source URL by itself is not evidence; the graph must contain the exact span or structured field that supports the claim.
-
-## Completion gates
-
-A run is not complete until all of the following pass:
-
-1. The task graph is acyclic and contains no dependency whose output is not consumed downstream.
-2. Every report claim marker resolves to a graph `Claim` node.
-3. Every factual report claim is `verified` or explicitly `contested`.
-4. Every included claim has at least one supporting evidence edge; contested claims also expose contradictory evidence.
-5. Every cited source exists in `sources.jsonl` and has provenance metadata.
-6. Citation coverage and evidence coverage meet the thresholds in `run.json`.
-7. The report contains limitations, unresolved gaps, and an as-of date.
-8. `python -B verify.py` passes.
-
-## Runtime requirements
-
-- Python 3.10+
-- A host capable of skills, commands, and subagents
-- At least one read-only research surface: web search, files, connected repositories, scholarly databases, or NotebookLM
-
-NotebookLM and Context7 are optional accelerators, not hard dependencies. The plugin degrades to available read-only sources and records capability gaps in the run audit.
-
-## Verification
+## Development verification
 
 ```bash
 python -B verify.py
+python -B scripts/run_benchmark.py --output benchmark-report.json
 python -B scripts/researchctl.py demo /tmp/evidence-research-demo
-python -B scripts/researchctl.py audit /tmp/evidence-research-demo
 ```
+
+## Release verification
+
+Release verification is stricter than development CI. It requires complete file coverage in `MANIFEST.json` and rejects modified, missing, or extra shipped files.
+
+```bash
+python -B scripts/build_manifest.py
+python -B verify.py --release
+```
+
+The `Release verification` workflow performs development verification, the fixed benchmark, manifest generation, complete seal verification, and evidence-artifact upload on manual dispatch or a `v3.*` tag.
+
+## Migration
+
+See `docs/migration-v2-to-v3.md`. Migration is non-destructive, preserves legacy graph IDs, records unverifiable legacy provenance explicitly, and leaves the v2 source run unchanged.
+
+## Release rule
+
+Do not promote or merge a release candidate until Python 3.10–3.13 CI, the fixed benchmark, security and fault suites, v2 fallback, complete release seal, architecture/security reviews, and explicit human approval all pass.
 
 ## Design provenance
 
-The plugin incorporates the ontology-first and task-graph ideas from `codejunkie99/graph-engineering` under its MIT license, but does not import that repository as a runtime dependency. See `NOTICE` and `references/research-basis.md`.
+The plugin incorporates ontology-first and task-graph concepts from `codejunkie99/graph-engineering` under its MIT license without importing that project as a runtime dependency. See `NOTICE` and `references/research-basis.md`.
