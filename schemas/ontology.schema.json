@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Research v3 Ontology",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "version", "run_target", "competency_questions", "entities", "relations"],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "version": {"type": "integer", "minimum": 1},
+    "run_target": {"type": "string", "minLength": 1},
+    "competency_questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "start_type", "end_type"],
+        "properties": {
+          "id": {"type": "string"},
+          "text": {"type": "string"},
+          "start_type": {"type": "string"},
+          "end_type": {"type": "string"},
+          "max_hops": {"type": "integer", "minimum": 0, "maximum": 8}
+        }
+      }
+    },
+    "entities": {"type": "object", "minProperties": 1},
+    "relations": {"type": "object"},
+    "events": {"type": "object"},
+    "canonicalization": {"type": "object"},
+    "candidate_relations": {"type": "array"},
+    "validated_paths": {"type": "object"}
+  }
+}
