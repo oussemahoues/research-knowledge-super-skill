@@ -1,163 +1,95 @@
 ---
 name: resolving-research-entities
-description: This skill should be used when an evidence graph contains duplicate names, aliases, source versions, organizations, products, people, datasets, repeated claims, or broken paths caused by identity fragmentation. It performs reversible candidate blocking, scored matching, canonicalization decisions, and graph validation while preserving provenance and conflicts. Do not merge solely on name similarity, delete original records, or adjudicate whether claims are true.
+description: This skill should be used when a v3 evidence graph contains duplicate entities, aliases, repeated claims, source versions, or broken retrieval paths caused by identity fragmentation. It creates conservative, scored, reversible fusion decisions and canonical projections. Do not merge solely on name similarity, delete original nodes, overwrite conflicting attributes, or adjudicate claim truth.
 ---
 
 # Resolve Research Entities
 
-Reduce identity fragmentation without corrupting the graph through false-positive merges. Success means every merge is explainable, reversible, type-compatible, and recorded in `decisions.jsonl`.
+Reduce fragmentation without introducing false-positive identity merges. Prefer unresolved duplicates to corrupt canonical identity.
 
 ## Inputs
 
 ```json
 {
-  "run_id": "...",
-  "task_id": "...",
-  "graph_path": "<run>/evidence-graph.jsonl",
+  "run_id": "run:...",
+  "task_id": "task:...",
   "entity_types": ["Organization", "Product", "Person"],
-  "thresholds": {"auto_merge": 0.95, "review": 0.70},
-  "stable_identifier_fields": ["doi", "orcid", "registration_number", "repository_url"]
+  "thresholds": {"auto_merge": 0.90, "review": 0.65},
+  "ontology_version": 1
 }
 ```
-
-## Load before starting
-
-- `references/evidence-ontology.md`
-- `references/architecture.md`
-- `lib/entity_resolution.py`
-- `lib/research_graph.py`
 
 ## Procedure
 
 ### 1. Build candidate blocks
 
-Compare only type-compatible candidates sharing at least one blocking key:
+Compare only type-compatible nodes sharing a stable identifier, normalized name token, official domain, jurisdiction key, product model, dataset identifier, or neighborhood signature.
 
-- normalized name/token signature
-- stable identifier prefix
-- email/domain or official website
-- jurisdiction and registration number
-- product family/model pattern
-- DOI, ORCID, ISBN, repository identity, or dataset identifier
-- graph-neighborhood signature
+### 2. Compute features
 
-Never compare all pairs at scale. Never compare incompatible entity types.
+Score names, aliases, identifiers, attributes, temporal compatibility, and graph neighborhoods separately. Record hard conflicts explicitly.
 
-### 2. Compute evidence-based match features
+### 3. Apply conservative bands
 
-Score independently:
+Auto-merge only when stable identifiers agree and the high-confidence threshold is met. Queue ambiguous cases for human review. Reject hard conflicts regardless of lexical similarity.
 
-- stable identifier equality
-- exact and normalized names
-- aliases/acronyms
-- location/jurisdiction
-- temporal overlap
-- organization or product hierarchy
-- shared official domains
-- compatible graph neighborhoods
-- conflicting attributes
+### 4. Choose canonical identity
 
-A stable identifier match may dominate. Name similarity alone must never cross the auto-merge threshold.
+Prefer authoritative stable identifiers, then authoritative earlier nodes, then deterministic semantic IDs. Do not use arbitrary insertion order.
 
-### 3. Apply decision bands
+### 5. Preserve provenance
 
-- score >= `auto_merge` with no hard conflict: merge automatically
-- `review` <= score < `auto_merge`: queue as ambiguous
-- score < `review`: reject match
-- any hard conflict in stable identity or type: reject regardless of lexical score
+Keep source surface forms, aliases, conflicting assertions, temporal ranges, and original node IDs. Canonical views are projections, not destructive rewrites.
 
-Prefer false negatives to false-positive merges for consequential entities.
+### 6. Record reversible decisions
 
-### 4. Choose a canonical ID deterministically
+Use `resolution_decisions` and `canonical_members`. Every applied merge includes score components, rationale, reviewer, and executable reversal data.
 
-Prefer, in order:
+### 7. Require approval where needed
 
-1. authoritative stable identifier
-2. earliest valid graph ID tied to the authoritative source
-3. deterministic stable ID from normalized semantic identity
+A `review` proposal cannot be applied until an independent reviewer changes it to `review-approved`. The fusion engine cannot approve its own ambiguous result.
 
-Do not choose based on insertion order when a stronger identity exists.
+### 8. Link versions correctly
 
-### 5. Preserve all provenance and conflicts
+Use temporal supersession for real versions or renamed legal entities. Do not flatten materially distinct product or organization versions.
 
-The canonical entity retains:
+### 9. Revalidate paths
 
-- every alias and source surface form
-- source-specific attributes
-- conflicting values as separate provenance-bearing assertions
-- valid temporal ranges
-- original node IDs through `SAME_AS` edges or merge metadata
+Check canonical projections, active memberships, contradictions, and affected retrieval paths after each decision batch.
 
-Never overwrite a conflicting attribute without retaining the source record.
+### 10. Preserve rollback
 
-### 6. Record a reversible decision
-
-Append to `decisions.jsonl`:
-
-```json
-{
-  "decision_id": "resolution:<id>",
-  "decision_type": "entity-merge|claim-dedup|source-version-link|reject-match",
-  "candidates": ["entity:a", "entity:b"],
-  "canonical_id": "entity:a",
-  "score": 0.97,
-  "features": {"stable_id": 1.0, "name": 0.92, "conflicts": 0},
-  "rationale": "...",
-  "merged_from": ["entity:b"],
-  "reversal": {"remove_edges": ["edge:..."], "restore_ids": ["entity:b"]},
-  "decided_at": "..."
-}
-```
-
-### 7. Update by append, never deletion
-
-Add `SAME_AS` for aliases/duplicates and `SUPERSEDES` for true versions. Preserve original records in the append-only log. Consumers resolve canonical views through decisions and edges.
-
-### 8. Revalidate and measure
-
-Run graph validation after each decision batch. Report:
-
-- candidates reviewed
-- automatic merges
-- ambiguous clusters
-- rejected matches
-- hard conflicts
-- estimated residual duplicate rate
-- paths restored or broken
+Test that reversing a decision deactivates canonical membership without deleting nodes, edges, or prior decision evidence.
 
 ## Output contract
 
 ```json
 {
-  "run_id": "...",
-  "task_id": "...",
-  "decision_batch": "working/resolution-<task-id>.jsonl",
-  "auto_merged": [],
-  "ambiguous": [],
+  "schema_version": "3.0",
+  "run_id": "run:...",
+  "task_id": "task:...",
+  "applied_decisions": ["resolution:..."],
+  "review_queue": [],
   "rejected": [],
   "hard_conflicts": [],
-  "metrics": {},
   "validation": {"passed": true, "errors": []}
 }
 ```
 
 ## Failure recovery
 
-- **Stable identifiers conflict:** reject merge and create a conflict note.
-- **Same name, different jurisdictions or dates:** keep separate unless authoritative identity evidence resolves them.
-- **Organization renamed:** use `SUPERSEDES` or temporal aliasing rather than flattening distinct legal entities blindly.
-- **Product version changed materially:** retain separate version nodes and link them.
-- **Repeated claims differ in scope:** do not deduplicate; use `QUALIFIES` or keep separate claims.
-- **Ambiguous cluster too large:** tighten blocking keys and split by type/time/jurisdiction.
-- **Validation fails:** quarantine the entire decision batch; do not apply partial canonicalization.
+- Stable identifiers conflict: reject and preserve a conflict note.
+- Same name but incompatible date or jurisdiction: keep separate.
+- Organization renamed: model temporal succession where legal identity changed.
+- Large ambiguous cluster: tighten blocking keys and split by type, time, or jurisdiction.
+- Validation failure: reverse the decision batch and retain evidence for review.
 
 ## Completion checklist
 
-- [ ] Candidate blocks are type-compatible.
-- [ ] Stable identifiers and conflicts are explicit features.
-- [ ] Name similarity alone never causes auto-merge.
-- [ ] Every merge has a deterministic canonical ID.
-- [ ] Aliases and conflicting attributes retain provenance.
-- [ ] Every decision is reversible.
-- [ ] Original records remain in the append-only graph.
-- [ ] Graph validation passes after the batch.
+- [ ] Candidate pairs are type-compatible.
+- [ ] Stable identifiers and conflicts are explicit.
+- [ ] Name similarity alone never auto-merges.
+- [ ] Canonical IDs are deterministic.
+- [ ] Provenance and original nodes remain intact.
+- [ ] Ambiguous decisions require independent approval.
+- [ ] Every applied merge is reversible and tested.
