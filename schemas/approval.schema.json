@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Research v3 Approval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["approval_id", "run_id", "interrupt_id", "reviewer", "decision", "rationale", "created_at"],
+  "properties": {
+    "approval_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "interrupt_id": {"type": "string"},
+    "reviewer": {"type": "string", "minLength": 1},
+    "decision": {"enum": ["APPROVE", "REJECT"]},
+    "rationale": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}
