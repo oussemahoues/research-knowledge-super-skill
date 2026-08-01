@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 from src.evidence_research.audit import audit_run
 from src.evidence_research.migration import migrate_v2_run
 from src.evidence_research.retrieval import HybridRetriever
-from src.evidence_research.runtime import DurableExecutor, EventStore
+from src.evidence_research.runtime import DurableExecutor, EventStore, evaluate_capabilities, parse_capabilities
 from src.evidence_research.runtime.event_store import stable_key
 from src.evidence_research.synthesis import audit_rendered_report, render_report
 from src.evidence_research.taskgraph import WorkProfile, compile_task_graph, select_architecture
@@ -40,7 +40,18 @@ def _load_run(path: str | Path) -> tuple[Path, EventStore, str]:
     return run_dir, EventStore(run_dir / manifest.get('database', 'state.db')), manifest['run_id']
 
 
+def _capability_check(args: argparse.Namespace):
+    declared = list(getattr(args, 'capability', []) or [])
+    env_value = os.environ.get('EVIDENCE_RESEARCH_CAPABILITIES')
+    available = tuple(declared) if declared else parse_capabilities(env_value)
+    strict = bool(getattr(args, 'strict_capabilities', False)) or os.environ.get('EVIDENCE_RESEARCH_STRICT_CAPABILITIES') == '1'
+    return evaluate_capabilities(available, strict=strict)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
+    capability_check = _capability_check(args)
+    if not capability_check.passed:
+        raise SystemExit('capability preflight failed: ' + '; '.join(capability_check.warnings))
     contract = json.loads(Path(args.contract).read_text(encoding='utf-8')) if args.contract else {
         'target': args.target or 'Research target',
         'as_of': args.as_of or date.today().isoformat(),
@@ -74,12 +85,19 @@ def cmd_init(args: argparse.Namespace) -> int:
         'schema_version': '3.0', 'engine': 'v3', 'run_id': run_id, 'target': target,
         'as_of': contract.get('as_of', date.today().isoformat()), 'database': 'state.db',
         'architecture': decision.to_dict(), 'contract_hash': f'sha256:{digest}',
+        'capability_check': capability_check.to_dict(),
     }
     _write_json(run_dir / 'contract.json', contract)
     _write_json(run_dir / 'task-graph.json', graph.to_dict())
     _write_json(run_dir / 'run.json', manifest)
     print(json.dumps({'run_path': str(run_dir), **manifest}, indent=2))
     return 0
+
+
+def cmd_capabilities(args: argparse.Namespace) -> int:
+    result = _capability_check(args)
+    print(json.dumps(result.to_dict(), indent=2))
+    return 0 if result.passed else 1
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
@@ -157,10 +175,16 @@ def cmd_engine(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_capability_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument('--capability', action='append', default=[], help='Host capability; repeat for each available capability')
+    parser.add_argument('--strict-capabilities', action='store_true', help='Fail when host capability discovery is absent')
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog='researchctl', description='Evidence Research v3 graph runtime')
     sub = p.add_subparsers(dest='command', required=True)
-    x = sub.add_parser('init'); x.add_argument('--root', default='research-runs'); x.add_argument('--contract'); x.add_argument('--target'); x.add_argument('--as-of'); x.add_argument('--max-agents', type=int, default=8); x.set_defaults(func=cmd_init)
+    x = sub.add_parser('init'); x.add_argument('--root', default='research-runs'); x.add_argument('--contract'); x.add_argument('--target'); x.add_argument('--as-of'); x.add_argument('--max-agents', type=int, default=8); _add_capability_arguments(x); x.set_defaults(func=cmd_init)
+    x = sub.add_parser('capabilities'); _add_capability_arguments(x); x.set_defaults(func=cmd_capabilities)
     x = sub.add_parser('inspect'); x.add_argument('run'); x.set_defaults(func=cmd_inspect)
     x = sub.add_parser('ready'); x.add_argument('run'); x.set_defaults(func=cmd_ready)
     x = sub.add_parser('recover-leases'); x.add_argument('run'); x.add_argument('--now'); x.set_defaults(func=cmd_recover)
