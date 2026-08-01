@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 
 
 def selected_engine() -> str:
@@ -13,7 +14,9 @@ def selected_engine() -> str:
 
 
 def main() -> int:
-    module = importlib.import_module(f"researchctl_{selected_engine()}")
+    engine = selected_engine()
+    module_name = "researchctl_v3_demo" if engine == "v3" and len(sys.argv) > 1 and sys.argv[1] == "demo" else f"researchctl_{engine}"
+    module = importlib.import_module(module_name)
     return int(module.main())
 
 
