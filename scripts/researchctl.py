@@ -13,6 +13,13 @@ def selected_engine() -> str:
     return engine
 
 
+def cmd_demo(args) -> int:
+    """Compatibility entrypoint retained for legacy tests and callers."""
+    if selected_engine() == "v2":
+        return int(importlib.import_module("researchctl_v2").cmd_demo(args))
+    return int(importlib.import_module("researchctl_v3_demo").run_demo(args.path))
+
+
 def main() -> int:
     engine = selected_engine()
     module_name = "researchctl_v3_demo" if engine == "v3" and len(sys.argv) > 1 and sys.argv[1] == "demo" else f"researchctl_{engine}"

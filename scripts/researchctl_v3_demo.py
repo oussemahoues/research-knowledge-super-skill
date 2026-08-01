@@ -17,12 +17,8 @@ from src.evidence_research.runtime.event_store import stable_key
 from src.evidence_research.verification import EvidenceChainVerifier
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="researchctl demo")
-    parser.add_argument("command")
-    parser.add_argument("path")
-    args = parser.parse_args()
-    root = Path(args.path)
+def run_demo(path: str | Path) -> int:
+    root = Path(path)
     run_dir = root / "v3-demo-run"
     run_dir.mkdir(parents=True, exist_ok=True)
     store = EventStore(run_dir / "state.db")
@@ -62,6 +58,14 @@ def main() -> int:
     payload = {"run_path": str(run_dir), "run_id": run_id, "audit": result.to_dict()}
     print(json.dumps(payload, indent=2))
     return 0 if result.passed else 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="researchctl demo")
+    parser.add_argument("command")
+    parser.add_argument("path")
+    args = parser.parse_args()
+    return run_demo(args.path)
 
 
 if __name__ == "__main__":
