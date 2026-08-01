@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   run_id TEXT NOT NULL REFERENCES runs(run_id),
   task_id TEXT NOT NULL,
   objective TEXT NOT NULL,
+  task_type TEXT NOT NULL DEFAULT 'generic',
   state TEXT NOT NULL,
   owner TEXT NOT NULL,
   max_attempts INTEGER NOT NULL,
@@ -119,6 +120,136 @@ CREATE TABLE IF NOT EXISTS approvals (
   created_at TEXT NOT NULL,
   PRIMARY KEY(run_id, approval_id)
 );
+CREATE TABLE IF NOT EXISTS source_episodes (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  episode_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  locator TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  content_path TEXT NOT NULL,
+  authority TEXT NOT NULL,
+  independence_group TEXT NOT NULL,
+  injection_risk TEXT NOT NULL,
+  effective_at TEXT,
+  retrieved_at TEXT NOT NULL,
+  supersedes_episode_id TEXT,
+  metadata_json TEXT NOT NULL,
+  PRIMARY KEY(run_id, episode_id),
+  UNIQUE(run_id, source_id, content_hash),
+  UNIQUE(run_id, source_id, version)
+);
+CREATE TABLE IF NOT EXISTS source_episode_findings (
+  run_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL,
+  finding_code TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  excerpt TEXT NOT NULL,
+  PRIMARY KEY(run_id, episode_id, finding_code),
+  FOREIGN KEY(run_id, episode_id) REFERENCES source_episodes(run_id, episode_id)
+);
+CREATE TABLE IF NOT EXISTS ontology_versions (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  ontology_version INTEGER NOT NULL,
+  ontology_hash TEXT NOT NULL,
+  ontology_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, ontology_version),
+  UNIQUE(run_id, ontology_hash)
+);
+CREATE TABLE IF NOT EXISTS graph_nodes (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  node_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  ontology_version INTEGER NOT NULL,
+  data_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, node_id)
+);
+CREATE TABLE IF NOT EXISTS graph_edges (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  edge_id TEXT NOT NULL,
+  edge_type TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  ontology_version INTEGER NOT NULL,
+  valid_from TEXT NOT NULL,
+  valid_to TEXT,
+  recorded_at TEXT NOT NULL,
+  source_episode_id TEXT,
+  provenance_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  supersedes_edge_id TEXT,
+  PRIMARY KEY(run_id, edge_id),
+  FOREIGN KEY(run_id, from_id) REFERENCES graph_nodes(run_id, node_id),
+  FOREIGN KEY(run_id, to_id) REFERENCES graph_nodes(run_id, node_id)
+);
+CREATE TABLE IF NOT EXISTS resolution_decisions (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  decision_id TEXT NOT NULL,
+  candidate_a TEXT NOT NULL,
+  candidate_b TEXT NOT NULL,
+  canonical_id TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  score_json TEXT NOT NULL,
+  rationale TEXT NOT NULL,
+  reversal_json TEXT NOT NULL,
+  reviewer TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  applied_at TEXT,
+  reversed_at TEXT,
+  reversal_reviewer TEXT,
+  reversal_rationale TEXT,
+  PRIMARY KEY(run_id, decision_id)
+);
+CREATE TABLE IF NOT EXISTS canonical_members (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  canonical_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  decision_id TEXT NOT NULL,
+  active INTEGER NOT NULL CHECK(active IN (0,1)),
+  PRIMARY KEY(run_id, canonical_id, member_id, decision_id),
+  FOREIGN KEY(run_id, decision_id) REFERENCES resolution_decisions(run_id, decision_id)
+);
+CREATE INDEX IF NOT EXISTS idx_graph_edges_temporal ON graph_edges(run_id, edge_type, from_id, valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS idx_source_episodes_source ON source_episodes(run_id, source_id, version);
+CREATE TABLE IF NOT EXISTS retrieval_traces (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  trace_id TEXT NOT NULL,
+  query TEXT NOT NULL,
+  query_class TEXT NOT NULL,
+  methods_json TEXT NOT NULL,
+  node_ids_json TEXT NOT NULL,
+  edge_ids_json TEXT NOT NULL,
+  paths_json TEXT NOT NULL,
+  source_episode_ids_json TEXT NOT NULL,
+  missing_links_json TEXT NOT NULL,
+  token_estimate INTEGER NOT NULL,
+  as_of TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, trace_id)
+);
+CREATE TABLE IF NOT EXISTS adjudication_decisions (
+  run_id TEXT NOT NULL REFERENCES runs(run_id),
+  decision_id TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  support_edge_ids_json TEXT NOT NULL,
+  contradiction_edge_ids_json TEXT NOT NULL,
+  source_episode_ids_json TEXT NOT NULL,
+  independence_groups_json TEXT NOT NULL,
+  lexical_entailment REAL NOT NULL,
+  numerical_consistency INTEGER NOT NULL CHECK(numerical_consistency IN (0,1)),
+  issues_json TEXT NOT NULL,
+  requires_model_review INTEGER NOT NULL CHECK(requires_model_review IN (0,1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, decision_id)
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_members_member ON canonical_members(run_id, member_id, active);
+CREATE INDEX IF NOT EXISTS idx_retrieval_traces_class ON retrieval_traces(run_id, query_class, created_at);
+CREATE INDEX IF NOT EXISTS idx_adjudication_claim ON adjudication_decisions(run_id, claim_id, created_at);
 """
 
 
@@ -138,6 +269,9 @@ class EventStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            columns = {row['name'] for row in conn.execute('PRAGMA table_info(tasks)').fetchall()}
+            if 'task_type' not in columns:
+                conn.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'generic'")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
