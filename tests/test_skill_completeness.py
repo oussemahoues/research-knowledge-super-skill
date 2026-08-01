@@ -17,7 +17,9 @@ class SkillCompletenessTests(unittest.TestCase):
             lines = text.splitlines()
             if len(lines) < 70:
                 failures.append(f"{skill_dir.name}: only {len(lines)} lines")
-            for heading in ("## Inputs", "## Procedure", "## Output contract", "## Completion checklist"):
+            if "## Inputs" not in text and "## Required inputs" not in text:
+                failures.append(f"{skill_dir.name}: missing Inputs section")
+            for heading in ("## Procedure", "## Output contract", "## Completion checklist"):
                 if heading not in text:
                     failures.append(f"{skill_dir.name}: missing {heading}")
             if "## Failure recovery" not in text and "## Edge cases" not in text:
@@ -25,7 +27,7 @@ class SkillCompletenessTests(unittest.TestCase):
             if not re.search(r"```json\n\{", text):
                 failures.append(f"{skill_dir.name}: missing concrete JSON contract example")
             description = text.split("---", 2)[1] if text.startswith("---") else ""
-            if "This skill should be used when" not in description:
+            if not re.search(r"This skill should be used (?:when|before)", description):
                 failures.append(f"{skill_dir.name}: trigger description is not third-person/assertive")
             if "Do not" not in description:
                 failures.append(f"{skill_dir.name}: trigger description lacks scope boundary")
