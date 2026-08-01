@@ -1,7 +1,7 @@
 {
   "name": "evidence-research",
-  "version": "2.0.0",
-  "description": "Evidence-first deep research with resumable task graphs, claim-evidence memory, citation verification, and deterministic quality gates.",
+  "version": "3.0.0",
+  "description": "Durable evidence research with adaptive task graphs, immutable source episodes, bitemporal evidence memory, independent claim adjudication, secure retrieval, and deterministic release gates.",
   "author": {
     "name": "Oussema HOUES"
   },

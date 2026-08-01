@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from .event_store import EventStore, stable_key, utc_now
+
+TERMINAL = {'SUCCEEDED', 'FAILED', 'CANCELLED'}
 
 
 @dataclass(frozen=True)
@@ -27,9 +30,9 @@ class DurableExecutor:
                 if missing:
                     raise ValueError(f"{task['id']}: missing dependencies {sorted(missing)}")
                 conn.execute(
-                    '''INSERT INTO tasks(run_id,task_id,objective,state,owner,max_attempts,consumes_json,produces_json,done_when,failure_policy)
-                       VALUES(?,?,?,?,?,?,?,?,?,?)''',
-                    (run_id, task['id'], task['objective'], 'PENDING', task['owner'], int(task.get('max_attempts', 1)), json.dumps(task.get('consumes', [])), json.dumps(task.get('produces', [])), task['done_when'], task.get('failure_policy', 'block')),
+                    '''INSERT INTO tasks(run_id,task_id,objective,task_type,state,owner,max_attempts,consumes_json,produces_json,done_when,failure_policy)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                    (run_id, task['id'], task['objective'], task.get('task_type', 'generic'), 'PENDING', task['owner'], int(task.get('max_attempts', 1)), json.dumps(task.get('consumes', [])), json.dumps(task.get('produces', [])), task['done_when'], task.get('failure_policy', 'block')),
                 )
             for task in tasks:
                 for dep in task.get('dependencies', []):
@@ -61,7 +64,7 @@ class DurableExecutor:
             rows = conn.execute("SELECT task_id FROM tasks WHERE run_id=? AND state='READY' ORDER BY task_id", (run_id,)).fetchall()
         return [r['task_id'] for r in rows]
 
-    def run_task(self, run_id: str, task_id: str, worker_id: str, fn: Callable[[], TaskResult]) -> TaskResult:
+    def run_task(self, run_id: str, task_id: str, worker_id: str, fn: Callable[[], TaskResult], *, lease_seconds: int = 300) -> TaskResult:
         with self.store.connect() as conn:
             task = conn.execute('SELECT * FROM tasks WHERE run_id=? AND task_id=?', (run_id, task_id)).fetchone()
             if task is None:
@@ -71,8 +74,11 @@ class DurableExecutor:
                 return TaskResult([dict(a) for a in artifacts], {'replayed': True})
             if task['state'] != 'READY':
                 raise ValueError(f"task {task_id} is {task['state']}, expected READY")
+            if lease_seconds < 1:
+                raise ValueError('lease_seconds must be positive')
             attempt = int(task['attempt_count']) + 1
-            conn.execute("UPDATE tasks SET state='RUNNING',attempt_count=?,lease_owner=? WHERE run_id=? AND task_id=?", (attempt, worker_id, run_id, task_id))
+            lease_expires_at = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+            conn.execute("UPDATE tasks SET state='RUNNING',attempt_count=?,lease_owner=?,lease_expires_at=? WHERE run_id=? AND task_id=?", (attempt, worker_id, lease_expires_at, run_id, task_id))
             conn.execute('INSERT INTO task_attempts(run_id,task_id,attempt,state,worker_id,started_at) VALUES(?,?,?,?,?,?)', (run_id, task_id, attempt, 'RUNNING', worker_id, utc_now()))
         self.store.append_event(run_id, 'TASK_STARTED', {'task_id': task_id, 'attempt': attempt, 'worker_id': worker_id}, f'task-start:{run_id}:{task_id}:{attempt}')
         try:
@@ -85,7 +91,7 @@ class DurableExecutor:
                         (run_id, item['artifact_id'], task_id, item['path'], item['content_hash'], item.get('media_type', 'application/octet-stream'), utc_now()),
                     )
                 output_hash = stable_key(*(sorted(a['content_hash'] for a in result.artifacts)))
-                conn.execute("UPDATE tasks SET state='SUCCEEDED',output_hash=?,lease_owner=NULL,last_error=NULL WHERE run_id=? AND task_id=?", (output_hash, run_id, task_id))
+                conn.execute("UPDATE tasks SET state='SUCCEEDED',output_hash=?,lease_owner=NULL,lease_expires_at=NULL,last_error=NULL WHERE run_id=? AND task_id=?", (output_hash, run_id, task_id))
                 conn.execute("UPDATE task_attempts SET state='SUCCEEDED',finished_at=? WHERE run_id=? AND task_id=? AND attempt=?", (utc_now(), run_id, task_id, attempt))
             self.store.append_event(run_id, 'TASK_SUCCEEDED', {'task_id': task_id, 'attempt': attempt, 'artifact_ids': [a['artifact_id'] for a in result.artifacts]}, f'task-success:{run_id}:{task_id}:{attempt}')
             self.store.checkpoint(run_id, task_id, self.snapshot(run_id))
@@ -97,10 +103,43 @@ class DurableExecutor:
                 task = conn.execute('SELECT * FROM tasks WHERE run_id=? AND task_id=?', (run_id, task_id)).fetchone()
                 retry = int(task['attempt_count']) < int(task['max_attempts'])
                 next_state = 'READY' if retry else 'FAILED'
-                conn.execute('UPDATE tasks SET state=?,lease_owner=NULL,last_error=? WHERE run_id=? AND task_id=?', (next_state, str(exc), run_id, task_id))
+                conn.execute('UPDATE tasks SET state=?,lease_owner=NULL,lease_expires_at=NULL,last_error=? WHERE run_id=? AND task_id=?', (next_state, str(exc), run_id, task_id))
                 conn.execute('UPDATE task_attempts SET state=?,finished_at=?,error_category=?,error_message=? WHERE run_id=? AND task_id=? AND attempt=?', ('FAILED', utc_now(), category, str(exc), run_id, task_id, attempt))
             self.store.append_event(run_id, 'TASK_FAILED', {'task_id': task_id, 'attempt': attempt, 'category': category, 'retry_scheduled': retry, 'error': str(exc)}, f'task-failed:{run_id}:{task_id}:{attempt}')
             raise
+
+
+    def renew_lease(self, run_id: str, task_id: str, worker_id: str, *, lease_seconds: int = 300) -> str:
+        if lease_seconds < 1:
+            raise ValueError('lease_seconds must be positive')
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        with self.store.connect() as conn:
+            task = conn.execute('SELECT state,lease_owner FROM tasks WHERE run_id=? AND task_id=?', (run_id, task_id)).fetchone()
+            if task is None:
+                raise KeyError(task_id)
+            if task['state'] != 'RUNNING' or task['lease_owner'] != worker_id:
+                raise ValueError('only the active lease owner may renew a running task')
+            conn.execute('UPDATE tasks SET lease_expires_at=? WHERE run_id=? AND task_id=?', (expires_at, run_id, task_id))
+        self.store.append_event(run_id, 'TASK_LEASE_RENEWED', {'task_id': task_id, 'worker_id': worker_id, 'lease_expires_at': expires_at}, f'lease-renew:{run_id}:{task_id}:{worker_id}:{expires_at}')
+        return expires_at
+
+    def recover_stale_leases(self, run_id: str, *, now: str | None = None) -> list[str]:
+        now = now or utc_now()
+        recovered: list[str] = []
+        with self.store.connect() as conn:
+            rows = conn.execute("SELECT * FROM tasks WHERE run_id=? AND state='RUNNING' AND lease_expires_at IS NOT NULL AND lease_expires_at<=? ORDER BY task_id", (run_id, now)).fetchall()
+            for task in rows:
+                retry = int(task['attempt_count']) < int(task['max_attempts'])
+                next_state = 'READY' if retry else 'FAILED'
+                message = f"worker lease expired at {task['lease_expires_at']}"
+                conn.execute('UPDATE tasks SET state=?,lease_owner=NULL,lease_expires_at=NULL,last_error=? WHERE run_id=? AND task_id=?', (next_state, message, run_id, task['task_id']))
+                conn.execute("UPDATE task_attempts SET state='ABANDONED',finished_at=?,error_category='lease_expired',error_message=? WHERE run_id=? AND task_id=? AND attempt=? AND state='RUNNING'", (now, message, run_id, task['task_id'], task['attempt_count']))
+                recovered.append(task['task_id'])
+        for task_id in recovered:
+            with self.store.connect() as conn:
+                task = conn.execute('SELECT state,attempt_count FROM tasks WHERE run_id=? AND task_id=?', (run_id, task_id)).fetchone()
+            self.store.append_event(run_id, 'TASK_LEASE_EXPIRED', {'task_id': task_id, 'attempt': int(task['attempt_count']), 'retry_scheduled': task['state'] == 'READY'}, f'lease-expired:{run_id}:{task_id}:{task["attempt_count"]}')
+        return recovered
 
     def interrupt(self, run_id: str, task_id: str | None, reason: str, payload: dict[str, Any]) -> str:
         interrupt_id = 'int:' + stable_key(run_id, task_id or '', reason, json.dumps(payload, sort_keys=True))[:20]
