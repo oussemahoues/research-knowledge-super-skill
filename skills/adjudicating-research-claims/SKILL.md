@@ -54,7 +54,7 @@ Evaluate candidate claims in a context separate from extraction. Success means e
 12. Request a targeted gap-acquisition task only through the orchestrator and only while below `max_gap_iterations`.
 13. Append adjudication decisions and status updates through the designated canonical writer; do not rewrite source evidence.
 
-## Decision contract
+## Output contract
 
 ```json
 {
