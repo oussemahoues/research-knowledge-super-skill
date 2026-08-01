@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -17,9 +18,15 @@ from src.evidence_research.runtime.event_store import stable_key
 from src.evidence_research.verification import EvidenceChainVerifier
 
 
+def _atomic_json(path: Path, value: dict) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def run_demo(path: str | Path) -> int:
     root = Path(path)
-    run_dir = root / "v3-demo-run"
+    run_dir = root / "run_v3_demo"
     run_dir.mkdir(parents=True, exist_ok=True)
     store = EventStore(run_dir / "state.db")
     run_id = "run:v3-demo"
@@ -55,7 +62,8 @@ def run_demo(path: str | Path) -> int:
         if verification.status != "verified":
             raise RuntimeError(json.dumps(verification.to_dict()))
     result = audit_run(store, run_id)
-    payload = {"run_path": str(run_dir), "run_id": run_id, "audit": result.to_dict()}
+    _atomic_json(run_dir / "audit.json", result.to_dict())
+    payload = {"run_path": str(run_dir), "run_id": run_id, "audit_path": str(run_dir / "audit.json"), "audit": result.to_dict()}
     print(json.dumps(payload, indent=2))
     return 0 if result.passed else 1
 
