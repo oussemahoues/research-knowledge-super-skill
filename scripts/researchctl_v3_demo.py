@@ -61,6 +61,15 @@ def run_demo(path: str | Path) -> int:
         verification = EvidenceChainVerifier(store).verify_claim(run_id, claim.node_id)
         if verification.status != "verified":
             raise RuntimeError(json.dumps(verification.to_dict()))
+    manifest = {
+        "schema_version": "3.0",
+        "engine": "v3",
+        "run_id": run_id,
+        "target": "Verify the Evidence Research v3 execution path",
+        "database": "state.db",
+        "architecture": "single"
+    }
+    _atomic_json(run_dir / "run.json", manifest)
     result = audit_run(store, run_id)
     _atomic_json(run_dir / "audit.json", result.to_dict())
     payload = {"run_path": str(run_dir), "run_id": run_id, "audit_path": str(run_dir / "audit.json"), "audit": result.to_dict()}

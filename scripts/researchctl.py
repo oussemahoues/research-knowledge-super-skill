@@ -14,12 +14,9 @@ def selected_engine() -> str:
 
 
 def _load(name: str):
-    try:
-        return importlib.import_module(f"scripts.{name}")
-    except ModuleNotFoundError as exc:
-        if exc.name != f"scripts.{name}":
-            raise
-        return importlib.import_module(name)
+    if __package__:
+        return importlib.import_module(f"{__package__}.{name}")
+    return importlib.import_module(name)
 
 
 def cmd_demo(args) -> int:
